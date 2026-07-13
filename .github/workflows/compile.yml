@@ -1,0 +1,62 @@
+name: Publish
+
+concurrency:
+  group: publish
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  # schedule:
+   # - cron: '0 10 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Fail if we are attempting to run on the master branch
+      if: ${{ GITHUB.REF_NAME == 'master' && github.repository == 'space-wizards/space-station-14' }}
+      run: exit 1
+
+    - name: Install dependencies
+      run: sudo apt-get install -y python3-paramiko python3-lxml
+
+    - uses: actions/checkout@v7
+      with:
+        submodules: 'recursive'
+
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Get Engine Tag
+      run: |
+        cd RobustToolbox
+        git fetch --depth=1
+
+    - name: Install dependencies
+      run: dotnet restore
+
+    - name: Build Packaging
+      run: dotnet build Content.Packaging --configuration Release --no-restore /m
+
+    - name: Package server
+      run: dotnet run --project Content.Packaging server --platform win-x64 --hybrid-acz
+
+    - name: Package client
+      run: dotnet run --project Content.Packaging client --no-wipe-release
+
+    - name: Publish to GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: release/*
+        tag_name: "v${{ github.run_number }}"
+        name: "Release v${{ github.run_number }}"
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
