@@ -6,6 +6,11 @@ concurrency:
 
 on:
   workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA, tag, or branch to checkout (leave blank for default)'
+        required: false
+        type: string
   # schedule:
    # - cron: '0 10 * * *'
 
@@ -17,16 +22,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Fail if we are attempting to run on the master branch
-      if: ${{ GITHUB.REF_NAME == 'master' && github.repository == 'space-wizards/space-station-14' }}
+    - name: Fail if we are attempting to run on the master branch without a custom commit
+      if: ${{ github.ref_name == 'master' && github.repository == 'space-wizards/space-station-14' && inputs.commit_sha == '' }}
       run: exit 1
 
     - name: Install dependencies
       run: sudo apt-get install -y python3-paramiko python3-lxml
 
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
+        # Check out the input SHA if provided; otherwise, fall back to the selected branch
+        ref: ${{ inputs.commit_sha || github.ref }}
 
     - name: Setup .NET Core
       uses: actions/setup-dotnet@v5
@@ -50,13 +57,9 @@ jobs:
     - name: Package client
       run: dotnet run --project Content.Packaging client --no-wipe-release
 
-    - name: Publish to GitHub Release
-      uses: softprops/action-gh-release@v2
+    - name: Upload Artifacts to GitHub Actions
+      uses: actions/upload-artifact@v4
       with:
-        files: release/*
-        tag_name: "v${{ github.run_number }}"
-        name: "Release v${{ github.run_number }}"
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: "Release-v${{ github.run_number }}"
+        path: release/
+        if-no-files-found: error
